@@ -12,10 +12,14 @@ const LPCSTR AppTitle = "Amblyo";
 struct Amblyo {
     HWND mainWindowHandle;
     RECT mainWindowRect;
-    HWND magWindowHandle;
-    RECT magWindowRect;
+
+    HWND magWindowLeftHandle;
+    RECT magWindowLeftRect;
+    
+    HWND magWindowRightHandle;    
+    RECT magWindowRightRect; 
+
     UINT_PTR magUpdateTimerId;
-    FLOAT magFactor;
     BOOL isFullScreen;
 };
 Amblyo amblyo;
@@ -25,6 +29,21 @@ LRESULT CALLBACK HostWndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lPar
 void CALLBACK UpdateMagWindow(HWND /*hwnd*/, UINT /*uMsg*/, UINT_PTR /*idEvent*/, DWORD /*dwTime*/);
 void GoPartialScreen();
 void GoFullScreen();
+
+
+void UpdateLeftMagRect() {
+    GetClientRect(amblyo.mainWindowHandle, &amblyo.magWindowLeftRect);
+    FLOAT width = amblyo.magWindowLeftRect.right - amblyo.magWindowLeftRect.left;
+    amblyo.magWindowLeftRect.right -= width * 0.5f;
+}
+
+
+void UpdateRightMagRect() {
+    GetClientRect(amblyo.mainWindowHandle, &amblyo.magWindowRightRect);
+    FLOAT width = amblyo.magWindowRightRect.right - amblyo.magWindowRightRect.left;
+    amblyo.magWindowRightRect.left += width * 0.5f;
+}
+
 
 Amblyo InitializeAmblyo(HINSTANCE hInstance) {
     Amblyo result;
@@ -57,24 +76,18 @@ Amblyo InitializeAmblyo(HINSTANCE hInstance) {
 
     SetLayeredWindowAttributes(result.mainWindowHandle, 0, 255, LWA_ALPHA);
 
-    GetClientRect(result.mainWindowHandle, &result.magWindowRect);
-    result.magWindowHandle = CreateWindow(WC_MAGNIFIER, TEXT("MagnifierWindow"), 
+    UpdateLeftMagRect();
+    result.magWindowLeftHandle = CreateWindow(WC_MAGNIFIER, TEXT("MagnifierWindow"), 
         WS_CHILD | MS_SHOWMAGNIFIEDCURSOR | WS_VISIBLE,
-        result.magWindowRect.left, result.magWindowRect.top, result.magWindowRect.right, result.magWindowRect.bottom, result.mainWindowHandle, NULL, hInstance, NULL );
-
-    result.magFactor = 2.0f;
-
-    MAGTRANSFORM matrix;
-    memset(&matrix, 0, sizeof(matrix));
-    matrix.v[0][0] = result.magFactor;
-    matrix.v[1][1] = result.magFactor;
-    matrix.v[2][2] = 1.0f;
-
-    MagSetWindowTransform(result.magWindowHandle, &matrix);
+        result.magWindowLeftRect.left, result.magWindowLeftRect.top, result.magWindowLeftRect.right, result.magWindowLeftRect.bottom, result.mainWindowHandle, NULL, hInstance, NULL );
+    
+    UpdateRightMagRect();
+    result.magWindowRightHandle = CreateWindow(WC_MAGNIFIER, TEXT("MagnifierWindow"), 
+        WS_CHILD | MS_SHOWMAGNIFIEDCURSOR | WS_VISIBLE,
+        result.magWindowRightRect.left, result.magWindowRightRect.top, result.magWindowRightRect.right, result.magWindowRightRect.bottom, result.mainWindowHandle, NULL, hInstance, NULL );
 
     const UINT timerInterval = 16;
-    result.magUpdateTimerId = SetTimer(result.magWindowHandle, 0, 16, UpdateMagWindow);
-
+    result.magUpdateTimerId = SetTimer(result.magWindowLeftHandle, 0, 16, UpdateMagWindow);
 
     return result;
 }
@@ -135,12 +148,15 @@ LRESULT CALLBACK HostWndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lPar
         break;
 
     case WM_SIZE:
-        if ( amblyo.magWindowHandle != NULL )
+        if ( amblyo.magWindowLeftHandle != NULL )
         {
-            GetClientRect(hWnd, &amblyo.magWindowRect);
+            UpdateLeftMagRect();
+            UpdateRightMagRect();
             // Resize the control to fill the window.
-            SetWindowPos(amblyo.magWindowHandle, NULL, 
-                amblyo.magWindowRect.left, amblyo.magWindowRect.top, amblyo.magWindowRect.right, amblyo.magWindowRect.bottom, 0);
+            SetWindowPos(amblyo.magWindowLeftHandle, NULL, 
+                amblyo.magWindowLeftRect.left, amblyo.magWindowLeftRect.top, amblyo.magWindowLeftRect.right, amblyo.magWindowLeftRect.bottom, 0);
+            SetWindowPos(amblyo.magWindowRightHandle, NULL, 
+                amblyo.magWindowRightRect.left, amblyo.magWindowRightRect.top, amblyo.magWindowRightRect.right, amblyo.magWindowRightRect.bottom, 0);
         }
         break;
 
@@ -155,43 +171,52 @@ void CALLBACK UpdateMagWindow(HWND /*hwnd*/, UINT /*uMsg*/, UINT_PTR /*idEvent*/
 {
     POINT mousePoint;
     GetCursorPos(&mousePoint);
+    RECT clientRect;
+    GetClientRect(amblyo.mainWindowHandle, &clientRect);
 
-    int width = (int)((amblyo.magWindowRect.right - amblyo.magWindowRect.left) / amblyo.magFactor);
-    int height = (int)((amblyo.magWindowRect.bottom - amblyo.magWindowRect.top) / amblyo.magFactor);
-    RECT sourceRect;
-    sourceRect.left = mousePoint.x - width / 2;
-    sourceRect.top = mousePoint.y -  height / 2;
+    FLOAT width =(clientRect.right - clientRect.left);
+    FLOAT height = (clientRect.bottom - clientRect.top);
+    RECT sourceLeftRect = clientRect;
+    sourceLeftRect.right = clientRect.right - width * 0.5f;
 
-    // Don't scroll outside desktop area.
-    if (sourceRect.left < 0)
-    {
-        sourceRect.left = 0;
-    }
-    if (sourceRect.left > GetSystemMetrics(SM_CXSCREEN) - width)
-    {
-        sourceRect.left = GetSystemMetrics(SM_CXSCREEN) - width;
-    }
-    sourceRect.right = sourceRect.left + width;
+    RECT sourceRightRect = clientRect;
+    sourceRightRect.left = clientRect.left + width * 0.5f;
+    
+    // sourceRect.left = mousePoint.x - width / 2;
+    // sourceRect.top = mousePoint.y -  height / 2;
 
-    if (sourceRect.top < 0)
-    {
-        sourceRect.top = 0;
-    }
-    if (sourceRect.top > GetSystemMetrics(SM_CYSCREEN) - height)
-    {
-        sourceRect.top = GetSystemMetrics(SM_CYSCREEN) - height;
-    }
-    sourceRect.bottom = sourceRect.top + height;
+    // // Don't scroll outside desktop area.
+    // if (sourceRect.left < 0)
+    // {
+    //     sourceRect.left = 0;
+    // }
+    // if (sourceRect.left > GetSystemMetrics(SM_CXSCREEN) - width)
+    // {
+    //     sourceRect.left = GetSystemMetrics(SM_CXSCREEN) - width;
+    // }
+    // sourceRect.right = sourceRect.left + width;
+
+    // if (sourceRect.top < 0)
+    // {
+    //     sourceRect.top = 0;
+    // }
+    // if (sourceRect.top > GetSystemMetrics(SM_CYSCREEN) - height)
+    // {
+    //     sourceRect.top = GetSystemMetrics(SM_CYSCREEN) - height;
+    // }
+    // sourceRect.bottom = sourceRect.top + height;
 
     // Set the source rectangle for the magnifier control.
-    MagSetWindowSource(amblyo.magWindowHandle, sourceRect);
+    MagSetWindowSource(amblyo.magWindowLeftHandle, sourceLeftRect);
+    MagSetWindowSource(amblyo.magWindowRightHandle, sourceRightRect);
 
     // Reclaim topmost status, to prevent unmagnified menus from remaining in view. 
     SetWindowPos(amblyo.mainWindowHandle, HWND_TOPMOST, 0, 0, 0, 0, 
         SWP_NOACTIVATE | SWP_NOMOVE | SWP_NOSIZE );
 
     // Force redraw.
-    InvalidateRect(amblyo.magWindowHandle, NULL, TRUE);
+    InvalidateRect(amblyo.magWindowLeftHandle, NULL, TRUE);
+    InvalidateRect(amblyo.magWindowRightHandle, NULL, TRUE);
 }
 
 void GoFullScreen()
