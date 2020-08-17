@@ -1,6 +1,7 @@
 #include "windows.h"
 #include "strsafe.h"
 #include "magnification.h"
+#include <math.h>
 
 
 #define RESTOREDWINDOWSTYLES WS_SIZEBOX | WS_SYSMENU | WS_CLIPCHILDREN | WS_CAPTION | WS_MAXIMIZEBOX
@@ -21,6 +22,9 @@ struct Amblyo {
 
     UINT_PTR magUpdateTimerId;
     BOOL isFullScreen;
+
+    FLOAT currLeftHue = 0.0f;
+    FLOAT currRightHue = 0.0f;
 };
 Amblyo amblyo;
 
@@ -42,6 +46,41 @@ void UpdateRightMagRect() {
     GetClientRect(amblyo.mainWindowHandle, &amblyo.magWindowRightRect);
     FLOAT width = amblyo.magWindowRightRect.right - amblyo.magWindowRightRect.left;
     amblyo.magWindowRightRect.left += width * 0.5f;
+}
+
+
+MAGCOLOREFFECT HueMatrix(FLOAT hueAngle) {
+
+hueAngle = hueAngle * 0.0174533;
+
+float lr = 0.213;
+float lg = 0.715;
+float lb = 0.072;
+float a = 0.143;
+float b = 0.140;
+float c = -0.283;
+float hueCos = cosf(hueAngle);
+float hueSin = sinf(hueAngle);
+
+return {{
+            { lr + hueCos * (1 - lr) + hueSin* (-lr), lg+hueCos*(-lg) + hueSin*(-lg), lb+cosf(-lb) + hueSin*(1-lb),0,0 },
+            {  lr+hueCos*(-lr)+ hueSin*(a),lg+hueCos*(1-lg)+hueSin*(b),lb+cosf(-lb) +hueSin*(c),0,0 },
+            {  lr+hueCos*(-lr)+ hueSin*(-(1-lr)),lg+hueCos*(-lg) +hueSin*(lg) ,lb+cosf(1-lb)+hueSin*(lb),0,0 },
+            {  0.0f,  0.0f,  0.0f,  1.0f,  0.0f },
+            {  0.0f,  0.0f,   0.0f,  0.0f,  1.0f } 
+        }};
+// [
+// lr+cos*(1-lr)+sin*(-lr),lg+cos*(-lg) +sin*(-lg),lb+cos(-lb) +sin*(1-lb),0,0,
+
+// lr+cos*(-lr)+ sin*(a),lg+cos*(1-lg)+sin*(b),lb+cos(-lb) +sin*(c),0,0,
+
+// lr+cos*(-lr)+ sin*(-(1-lr)),lg+cos*(-lg) +sin*(lg) ,lb+cos(1-lb)+sin*(lb),0,0,
+
+// 0,0,0,1,0,
+
+// 0,0,0,0,1
+
+// ]    
 }
 
 
@@ -85,6 +124,11 @@ Amblyo InitializeAmblyo(HINSTANCE hInstance) {
     result.magWindowRightHandle = CreateWindow(WC_MAGNIFIER, TEXT("MagnifierWindow"), 
         WS_CHILD | MS_SHOWMAGNIFIEDCURSOR | WS_VISIBLE,
         result.magWindowRightRect.left, result.magWindowRightRect.top, result.magWindowRightRect.right, result.magWindowRightRect.bottom, result.mainWindowHandle, NULL, hInstance, NULL );
+
+    {
+        MAGCOLOREFFECT magEffectInvert = HueMatrix(300.0f);
+        MagSetColorEffect(result.magWindowRightHandle, &magEffectInvert);        
+    }
 
     const UINT timerInterval = 16;
     result.magUpdateTimerId = SetTimer(result.magWindowLeftHandle, 0, 16, UpdateMagWindow);
@@ -134,6 +178,18 @@ LRESULT CALLBACK HostWndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lPar
                 GoPartialScreen();
             }
         }
+        else if(wParam == 'L')
+        {
+            amblyo.currLeftHue = (amblyo.currLeftHue + 1.0f) > 360.0f ? 0.0f : amblyo.currLeftHue + 1.0f;
+            MAGCOLOREFFECT effect = HueMatrix(amblyo.currLeftHue);
+            MagSetColorEffect(amblyo.magWindowLeftHandle, &effect);        
+        }
+        else if(wParam == 'R')
+        {
+            amblyo.currRightHue = (amblyo.currRightHue + 1.0f) > 360.0f ? 0.0f : amblyo.currRightHue + 1.0f;
+            MAGCOLOREFFECT effect = HueMatrix(amblyo.currRightHue);
+            MagSetColorEffect(amblyo.magWindowRightHandle, &effect);        
+        }
         break;
 
     case WM_SYSCOMMAND:
@@ -172,7 +228,7 @@ void CALLBACK UpdateMagWindow(HWND /*hwnd*/, UINT /*uMsg*/, UINT_PTR /*idEvent*/
     POINT mousePoint;
     GetCursorPos(&mousePoint);
     RECT clientRect;
-    GetClientRect(amblyo.mainWindowHandle, &clientRect);
+    GetWindowRect(amblyo.mainWindowHandle, &clientRect);
 
     FLOAT width =(clientRect.right - clientRect.left);
     FLOAT height = (clientRect.bottom - clientRect.top);
@@ -180,7 +236,7 @@ void CALLBACK UpdateMagWindow(HWND /*hwnd*/, UINT /*uMsg*/, UINT_PTR /*idEvent*/
     sourceLeftRect.right = clientRect.right - width * 0.5f;
 
     RECT sourceRightRect = clientRect;
-    sourceRightRect.left = clientRect.left + width * 0.5f;
+    sourceRightRect.left = sourceLeftRect.right;
     
     // sourceRect.left = mousePoint.x - width / 2;
     // sourceRect.top = mousePoint.y -  height / 2;
