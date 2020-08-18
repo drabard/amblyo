@@ -217,27 +217,27 @@ INT_PTR CALLBACK ColorAdjustmentDialogProc(HWND hwnd, UINT Message, WPARAM wPara
         {
             HWND slider = GetDlgItem(hwnd, IDC_HUESLIDER_LEFT);
             SendMessage(slider , TBM_SETRANGE, FALSE, MAKELONG(0, 360));
-            SendMessage(slider, TBM_SETPOS, TRUE, (LONG)0);
+            SendMessage(slider, TBM_SETPOS, TRUE, (LONG)amblyo.leftHueAngle);
 
             slider = GetDlgItem(hwnd, IDC_SATSLIDER_LEFT);
             SendMessage(slider, TBM_SETRANGE, FALSE, MAKELONG(100, 1000));
-            SendMessage(slider, TBM_SETPOS, TRUE, (LONG)100);
+            SendMessage(slider, TBM_SETPOS, TRUE, (LONG)(amblyo.leftSaturation*100.0));
 
             slider = GetDlgItem(hwnd, IDC_VALSLIDER_LEFT);
             SendMessage(slider, TBM_SETRANGE, FALSE, MAKELONG(100, 1000));
-            SendMessage(slider, TBM_SETPOS, TRUE, (LONG)100);
+            SendMessage(slider, TBM_SETPOS, TRUE, (LONG)(amblyo.leftValue*100.0));
 
             slider = GetDlgItem(hwnd, IDC_HUESLIDER_RIGHT);
             SendMessage(slider, TBM_SETRANGE, FALSE, MAKELONG(0, 360));
-            SendMessage(slider, TBM_SETPOS, TRUE, (LONG)0);
+            SendMessage(slider, TBM_SETPOS, TRUE, (LONG)amblyo.rightHueAngle);
 
             slider = GetDlgItem(hwnd, IDC_SATSLIDER_RIGHT);
             SendMessage(slider, TBM_SETRANGE, FALSE, MAKELONG(100, 1000));
-            SendMessage(slider, TBM_SETPOS, TRUE, (LONG)100);
+            SendMessage(slider, TBM_SETPOS, TRUE, (LONG)(amblyo.rightSaturation*100.0));
 
             slider = GetDlgItem(hwnd, IDC_VALSLIDER_RIGHT);
             SendMessage(slider, TBM_SETRANGE, FALSE, MAKELONG(100, 1000));
-            SendMessage(slider, TBM_SETPOS, TRUE, (LONG)100);
+            SendMessage(slider, TBM_SETPOS, TRUE, (LONG)(amblyo.rightValue*100.0f));
         }
         return TRUE;
     case WM_COMMAND:
