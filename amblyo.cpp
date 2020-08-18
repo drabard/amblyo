@@ -237,7 +237,7 @@ INT_PTR CALLBACK ColorAdjustmentDialogProc(HWND hwnd, UINT Message, WPARAM wPara
 
             slider = GetDlgItem(hwnd, IDC_VALSLIDER_RIGHT);
             SendMessage(slider, TBM_SETRANGE, FALSE, MAKELONG(100, 1000));
-            SendMessage(slider, TBM_SETPOS, TRUE, (LONG)(amblyo.rightValue*100.0f));
+            SendMessage(slider, TBM_SETPOS, TRUE, (LONG)(amblyo.rightValue*100.0));
         }
         return TRUE;
     case WM_COMMAND:
@@ -285,17 +285,34 @@ INT_PTR CALLBACK ColorAdjustmentDialogProc(HWND hwnd, UINT Message, WPARAM wPara
 
 void CALLBACK UpdateMagWindow(HWND /*hwnd*/, UINT /*uMsg*/, UINT_PTR /*idEvent*/, DWORD /*dwTime*/)
 {
-    POINT mousePoint;
-    GetCursorPos(&mousePoint);
     RECT clientRect;
-    GetWindowRect(amblyo.mainWindowHandle, &clientRect);
+    RECT windowRect;
+    GetClientRect(amblyo.mainWindowHandle, &clientRect);
+    GetWindowRect(amblyo.mainWindowHandle, &windowRect);
 
-    FLOAT width =(clientRect.right - clientRect.left);
-    FLOAT height = (clientRect.bottom - clientRect.top);
-    RECT sourceLeftRect = clientRect;
-    sourceLeftRect.right = clientRect.right - width * 0.5f;
+    RECT screenClient;
+    {
+        POINT screenCoords;
+        screenCoords.x = clientRect.left;
+        screenCoords.y = clientRect.top;
+        ClientToScreen(amblyo.mainWindowHandle, &screenCoords);
 
-    RECT sourceRightRect = clientRect;
+        screenClient.left = screenCoords.x;
+        screenClient.top = screenCoords.y;
+
+        screenCoords.x = clientRect.right;
+        screenCoords.y = clientRect.bottom;
+        ClientToScreen(amblyo.mainWindowHandle, &screenCoords);
+
+        screenClient.right = screenCoords.x;
+        screenClient.bottom = screenCoords.y;
+    }
+
+    LONG width =(screenClient.right - screenClient.left);
+    LONG height = (screenClient.bottom - screenClient.top);
+    RECT sourceLeftRect = screenClient;
+    sourceLeftRect.right -= width / 2;
+    RECT sourceRightRect = screenClient;
     sourceRightRect.left = sourceLeftRect.right;
     
     // Set the source rectangle for the magnifier control.
