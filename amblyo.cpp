@@ -1,13 +1,16 @@
 #include "windows.h"
 #include "strsafe.h"
 #include "magnification.h"
+#include "resource.h"
 #include <math.h>
+#include <Commctrl.h>
+
 
 
 #define RESTOREDWINDOWSTYLES WS_SIZEBOX | WS_SYSMENU | WS_CLIPCHILDREN | WS_CAPTION | WS_MAXIMIZEBOX
 
 
-const LPCSTR AppTitle = "Amblyo";
+const LPCWSTR AppTitle = L"Amblyo";
 
 
 struct Amblyo {
@@ -21,15 +24,21 @@ struct Amblyo {
     RECT magWindowRightRect; 
 
     UINT_PTR magUpdateTimerId;
-    BOOL isFullScreen;
 
-    FLOAT currLeftHue = 0.0f;
-    FLOAT currRightHue = 0.0f;
+    FLOAT leftHueAngle;
+    FLOAT leftSaturation;
+    FLOAT leftValue;
+    FLOAT rightHueAngle;
+    FLOAT rightSaturation;
+    FLOAT rightValue;
+
+    BOOL isFullScreen;
 };
 Amblyo amblyo;
 
 
 LRESULT CALLBACK HostWndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam);
+INT_PTR CALLBACK ColorAdjustmentDialogProc(HWND hwnd, UINT Message, WPARAM wParam, LPARAM lParam);
 void CALLBACK UpdateMagWindow(HWND /*hwnd*/, UINT /*uMsg*/, UINT_PTR /*idEvent*/, DWORD /*dwTime*/);
 void GoPartialScreen();
 void GoFullScreen();
@@ -37,55 +46,38 @@ void GoFullScreen();
 
 void UpdateLeftMagRect() {
     GetClientRect(amblyo.mainWindowHandle, &amblyo.magWindowLeftRect);
-    FLOAT width = amblyo.magWindowLeftRect.right - amblyo.magWindowLeftRect.left;
-    amblyo.magWindowLeftRect.right -= width * 0.5f;
+    LONG width = amblyo.magWindowLeftRect.right - amblyo.magWindowLeftRect.left;
+    amblyo.magWindowLeftRect.right -= width / 2;
 }
 
 
 void UpdateRightMagRect() {
     GetClientRect(amblyo.mainWindowHandle, &amblyo.magWindowRightRect);
-    FLOAT width = amblyo.magWindowRightRect.right - amblyo.magWindowRightRect.left;
-    amblyo.magWindowRightRect.left += width * 0.5f;
+    LONG width = amblyo.magWindowRightRect.right - amblyo.magWindowRightRect.left;
+    amblyo.magWindowRightRect.left += width / 2;
 }
 
 
-MAGCOLOREFFECT HueMatrix(FLOAT hueAngle) {
+MAGCOLOREFFECT HSVTransform(FLOAT hueAngle, FLOAT s, FLOAT v) {
+    FLOAT phi = hueAngle * 0.0174533f;
+    FLOAT u = cosf(phi);
+    FLOAT w = sinf(phi);
+    FLOAT vs = v * s;
+    FLOAT vsu = vs * u;
+    FLOAT vsw = vs * w;
 
-hueAngle = hueAngle * 0.0174533;
-
-float lr = 0.213;
-float lg = 0.715;
-float lb = 0.072;
-float a = 0.143;
-float b = 0.140;
-float c = -0.283;
-float hueCos = cosf(hueAngle);
-float hueSin = sinf(hueAngle);
-
-return {{
-            { lr + hueCos * (1 - lr) + hueSin* (-lr), lg+hueCos*(-lg) + hueSin*(-lg), lb+cosf(-lb) + hueSin*(1-lb),0,0 },
-            {  lr+hueCos*(-lr)+ hueSin*(a),lg+hueCos*(1-lg)+hueSin*(b),lb+cosf(-lb) +hueSin*(c),0,0 },
-            {  lr+hueCos*(-lr)+ hueSin*(-(1-lr)),lg+hueCos*(-lg) +hueSin*(lg) ,lb+cosf(1-lb)+hueSin*(lb),0,0 },
-            {  0.0f,  0.0f,  0.0f,  1.0f,  0.0f },
-            {  0.0f,  0.0f,   0.0f,  0.0f,  1.0f } 
-        }};
-// [
-// lr+cos*(1-lr)+sin*(-lr),lg+cos*(-lg) +sin*(-lg),lb+cos(-lb) +sin*(1-lb),0,0,
-
-// lr+cos*(-lr)+ sin*(a),lg+cos*(1-lg)+sin*(b),lb+cos(-lb) +sin*(c),0,0,
-
-// lr+cos*(-lr)+ sin*(-(1-lr)),lg+cos*(-lg) +sin*(lg) ,lb+cos(1-lb)+sin*(lb),0,0,
-
-// 0,0,0,1,0,
-
-// 0,0,0,0,1
-
-// ]    
+    return {{
+            {0.299f*v + 0.701f*vsu + 0.168f*vsw, 0.587f*v - 0.587f*vsu + 0.330f*vsw, 0.114f*v - 0.114f*vsu - 0.497f*vsw, 0, 0},
+            {0.299f*v - 0.299f*vsu - 0.328f*vsw, 0.587f*v + 0.413f*vsu + 0.035f*vsw, 0.114f*v - 0.114f*vsu + 0.292f*vsw, 0, 0},
+            {0.299f*v - 0.3f*vsu + 1.25f*vsw, 0.587f*v - 0.588f*vsu - 1.05f*vsw, 0.114f*v + 0.886f*vsu - 0.203f*vsw, 0, 0},
+            {0, 0, 0, 1, 0},
+            {0, 0, 0, 0, 1}
+    }};
 }
 
 
 Amblyo InitializeAmblyo(HINSTANCE hInstance) {
-    Amblyo result;
+    Amblyo result = {};
 
     result.isFullScreen = FALSE;
 
@@ -108,6 +100,13 @@ Amblyo InitializeAmblyo(HINSTANCE hInstance) {
     result.mainWindowRect.left = 0;
     result.mainWindowRect.right = GetSystemMetrics(SM_CXSCREEN);
 
+    result.leftHueAngle = 0.0f;
+    result.leftSaturation = 1.0f;
+    result.leftValue = 1.0f;
+    result.rightHueAngle = 0.0f;
+    result.rightSaturation = 1.0f;
+    result.rightValue = 1.0f;
+
     result.mainWindowHandle = CreateWindowEx(WS_EX_TOPMOST | WS_EX_LAYERED, 
         WindowClassName, WindowTitle, 
         RESTOREDWINDOWSTYLES,
@@ -125,11 +124,6 @@ Amblyo InitializeAmblyo(HINSTANCE hInstance) {
         WS_CHILD | MS_SHOWMAGNIFIEDCURSOR | WS_VISIBLE,
         result.magWindowRightRect.left, result.magWindowRightRect.top, result.magWindowRightRect.right, result.magWindowRightRect.bottom, result.mainWindowHandle, NULL, hInstance, NULL );
 
-    {
-        MAGCOLOREFFECT magEffectInvert = HueMatrix(300.0f);
-        MagSetColorEffect(result.magWindowRightHandle, &magEffectInvert);        
-    }
-
     const UINT timerInterval = 16;
     result.magUpdateTimerId = SetTimer(result.magWindowLeftHandle, 0, 16, UpdateMagWindow);
 
@@ -143,7 +137,7 @@ int APIENTRY WinMain(_In_ HINSTANCE hInstance,
                      _In_ int nCmdShow)
 {
     if(MagInitialize() == FALSE) {
-        MessageBox(NULL, "Failed to initialize Magnification API", AppTitle, MB_OK);
+        MessageBox(NULL, L"Failed to initialize Magnification API", AppTitle, MB_OK);
         return 1;
     }
 
@@ -164,48 +158,40 @@ int APIENTRY WinMain(_In_ HINSTANCE hInstance,
 
 
 LRESULT CALLBACK HostWndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam) {
-    switch (message) 
-    {
+    switch (message) {
     case WM_DESTROY:
         PostQuitMessage(0);
         break;
-
     case WM_KEYDOWN:
-        if (wParam == VK_ESCAPE)
-        {
-            if (amblyo.isFullScreen) 
-            {
+        if (wParam == VK_ESCAPE) {
+            if (amblyo.isFullScreen) {
                 GoPartialScreen();
             }
         }
-        else if(wParam == 'L')
-        {
-            amblyo.currLeftHue = (amblyo.currLeftHue + 1.0f) > 360.0f ? 0.0f : amblyo.currLeftHue + 1.0f;
-            MAGCOLOREFFECT effect = HueMatrix(amblyo.currLeftHue);
+        else if (wParam == 'C') {
+            DialogBox(GetModuleHandle(NULL), MAKEINTRESOURCE(IDD_DIALOG1), hWnd, ColorAdjustmentDialogProc);
+        }
+        else if(wParam == 'L') {
+            MAGCOLOREFFECT effect = HSVTransform(0.0f, 1.0f, 1.0f);
             MagSetColorEffect(amblyo.magWindowLeftHandle, &effect);        
         }
-        else if(wParam == 'R')
-        {
-            amblyo.currRightHue = (amblyo.currRightHue + 1.0f) > 360.0f ? 0.0f : amblyo.currRightHue + 1.0f;
-            MAGCOLOREFFECT effect = HueMatrix(amblyo.currRightHue);
+        else if(wParam == 'R') {
+            MAGCOLOREFFECT effect = HSVTransform(0.0f, 1.0f, 1.0f);
             MagSetColorEffect(amblyo.magWindowRightHandle, &effect);        
         }
         break;
 
     case WM_SYSCOMMAND:
-        if (GET_SC_WPARAM(wParam) == SC_MAXIMIZE)
-        {
+        if (GET_SC_WPARAM(wParam) == SC_MAXIMIZE) {
             GoFullScreen();
         }
-        else
-        {
+        else {
             return DefWindowProc(hWnd, message, wParam, lParam);
         }
         break;
-
+        
     case WM_SIZE:
-        if ( amblyo.magWindowLeftHandle != NULL )
-        {
+        if ( amblyo.magWindowLeftHandle != NULL ) {
             UpdateLeftMagRect();
             UpdateRightMagRect();
             // Resize the control to fill the window.
@@ -223,6 +209,80 @@ LRESULT CALLBACK HostWndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lPar
     return 0; 
 }
 
+
+INT_PTR CALLBACK ColorAdjustmentDialogProc(HWND hwnd, UINT Message, WPARAM wParam, LPARAM lParam) {
+    switch (Message)
+    {
+    case WM_INITDIALOG:
+        {
+            HWND slider = GetDlgItem(hwnd, IDC_HUESLIDER_LEFT);
+            SendMessage(slider , TBM_SETRANGE, FALSE, MAKELONG(0, 360));
+            SendMessage(slider, TBM_SETPOS, TRUE, (LONG)0);
+
+            slider = GetDlgItem(hwnd, IDC_SATSLIDER_LEFT);
+            SendMessage(slider, TBM_SETRANGE, FALSE, MAKELONG(100, 1000));
+            SendMessage(slider, TBM_SETPOS, TRUE, (LONG)100);
+
+            slider = GetDlgItem(hwnd, IDC_VALSLIDER_LEFT);
+            SendMessage(slider, TBM_SETRANGE, FALSE, MAKELONG(100, 1000));
+            SendMessage(slider, TBM_SETPOS, TRUE, (LONG)100);
+
+            slider = GetDlgItem(hwnd, IDC_HUESLIDER_RIGHT);
+            SendMessage(slider, TBM_SETRANGE, FALSE, MAKELONG(0, 360));
+            SendMessage(slider, TBM_SETPOS, TRUE, (LONG)0);
+
+            slider = GetDlgItem(hwnd, IDC_SATSLIDER_RIGHT);
+            SendMessage(slider, TBM_SETRANGE, FALSE, MAKELONG(100, 1000));
+            SendMessage(slider, TBM_SETPOS, TRUE, (LONG)100);
+
+            slider = GetDlgItem(hwnd, IDC_VALSLIDER_RIGHT);
+            SendMessage(slider, TBM_SETRANGE, FALSE, MAKELONG(100, 1000));
+            SendMessage(slider, TBM_SETPOS, TRUE, (LONG)100);
+        }
+        return TRUE;
+    case WM_COMMAND:
+        switch (LOWORD(wParam))
+        {
+        case IDOK:
+            EndDialog(hwnd, IDOK);
+            break;
+        }
+        break;
+    case WM_HSCROLL:
+        {
+            HWND slider = (HWND)lParam;
+            int id = GetDlgCtrlID(slider);
+            int pos = SendMessage(slider, TBM_GETPOS, 0, 0);
+            switch (id) {
+            case IDC_HUESLIDER_LEFT:
+                amblyo.leftHueAngle = (float)pos;
+                break;
+            case IDC_SATSLIDER_LEFT:
+                amblyo.leftSaturation = ((float)pos)/100.0f;
+                break;
+            case IDC_VALSLIDER_LEFT:
+                amblyo.leftValue = ((float)pos)/100.0f;
+                break;
+            case IDC_HUESLIDER_RIGHT:
+                amblyo.rightHueAngle = (float)pos;
+                break;
+            case IDC_SATSLIDER_RIGHT:
+                amblyo.rightSaturation = ((float)pos) / 100.0f;
+                break;
+            case IDC_VALSLIDER_RIGHT:
+                amblyo.rightValue = ((float)pos) / 100.0f;
+                break;
+            };
+        }
+        break;
+    default:
+        return FALSE;
+    }
+    return TRUE;
+}
+
+
+
 void CALLBACK UpdateMagWindow(HWND /*hwnd*/, UINT /*uMsg*/, UINT_PTR /*idEvent*/, DWORD /*dwTime*/)
 {
     POINT mousePoint;
@@ -238,30 +298,6 @@ void CALLBACK UpdateMagWindow(HWND /*hwnd*/, UINT /*uMsg*/, UINT_PTR /*idEvent*/
     RECT sourceRightRect = clientRect;
     sourceRightRect.left = sourceLeftRect.right;
     
-    // sourceRect.left = mousePoint.x - width / 2;
-    // sourceRect.top = mousePoint.y -  height / 2;
-
-    // // Don't scroll outside desktop area.
-    // if (sourceRect.left < 0)
-    // {
-    //     sourceRect.left = 0;
-    // }
-    // if (sourceRect.left > GetSystemMetrics(SM_CXSCREEN) - width)
-    // {
-    //     sourceRect.left = GetSystemMetrics(SM_CXSCREEN) - width;
-    // }
-    // sourceRect.right = sourceRect.left + width;
-
-    // if (sourceRect.top < 0)
-    // {
-    //     sourceRect.top = 0;
-    // }
-    // if (sourceRect.top > GetSystemMetrics(SM_CYSCREEN) - height)
-    // {
-    //     sourceRect.top = GetSystemMetrics(SM_CYSCREEN) - height;
-    // }
-    // sourceRect.bottom = sourceRect.top + height;
-
     // Set the source rectangle for the magnifier control.
     MagSetWindowSource(amblyo.magWindowLeftHandle, sourceLeftRect);
     MagSetWindowSource(amblyo.magWindowRightHandle, sourceRightRect);
@@ -270,10 +306,17 @@ void CALLBACK UpdateMagWindow(HWND /*hwnd*/, UINT /*uMsg*/, UINT_PTR /*idEvent*/
     SetWindowPos(amblyo.mainWindowHandle, HWND_TOPMOST, 0, 0, 0, 0, 
         SWP_NOACTIVATE | SWP_NOMOVE | SWP_NOSIZE );
 
+    MAGCOLOREFFECT effect = HSVTransform(amblyo.leftHueAngle, amblyo.leftSaturation, amblyo.leftValue);
+    MagSetColorEffect(amblyo.magWindowLeftHandle, &effect);
+
+    effect = HSVTransform(amblyo.rightHueAngle, amblyo.rightSaturation, amblyo.rightValue);
+    MagSetColorEffect(amblyo.magWindowRightHandle, &effect);
+
     // Force redraw.
     InvalidateRect(amblyo.magWindowLeftHandle, NULL, TRUE);
     InvalidateRect(amblyo.magWindowRightHandle, NULL, TRUE);
 }
+
 
 void GoFullScreen()
 {
@@ -305,11 +348,7 @@ void GoFullScreen()
         SWP_SHOWWINDOW | SWP_NOZORDER | SWP_NOACTIVATE);
 }
 
-//
-// FUNCTION: GoPartialScreen()
-//
-// PURPOSE: Makes the host window resizable and focusable.
-//
+
 void GoPartialScreen()
 {
     amblyo.isFullScreen = FALSE;

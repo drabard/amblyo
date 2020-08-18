@@ -1,4 +1,10 @@
+.vs/
 *.exe
 *.ilk
 *.obj
 *.pdb
+*.aps
+*.filters
+*.user
+Debug/
+x64/
