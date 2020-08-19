@@ -25,12 +25,12 @@ struct Amblyo {
 
     UINT_PTR magUpdateTimerId;
 
-    FLOAT leftHueAngle;
-    FLOAT leftSaturation;
-    FLOAT leftValue;
-    FLOAT rightHueAngle;
-    FLOAT rightSaturation;
-    FLOAT rightValue;
+    FLOAT leftRed;
+    FLOAT leftGreen;
+    FLOAT leftBlue;
+    FLOAT rightRed;
+    FLOAT rightGreen;
+    FLOAT rightBlue;
 
     BOOL isFullScreen;
 };
@@ -58,21 +58,16 @@ void UpdateRightMagRect() {
 }
 
 
-MAGCOLOREFFECT HSVTransform(FLOAT hueAngle, FLOAT s, FLOAT v) {
-    FLOAT phi = hueAngle * 0.0174533f;
-    FLOAT u = cosf(phi);
-    FLOAT w = sinf(phi);
-    FLOAT vs = v * s;
-    FLOAT vsu = vs * u;
-    FLOAT vsw = vs * w;
+MAGCOLOREFFECT ColorTransform(FLOAT red, FLOAT green, FLOAT blue) {
+    FLOAT norm = 1.0f/(red + green + blue) * 3.0f;
 
-    return {{
-            {0.299f*v + 0.701f*vsu + 0.168f*vsw, 0.587f*v - 0.587f*vsu + 0.330f*vsw, 0.114f*v - 0.114f*vsu - 0.497f*vsw, 0, 0},
-            {0.299f*v - 0.299f*vsu - 0.328f*vsw, 0.587f*v + 0.413f*vsu + 0.035f*vsw, 0.114f*v - 0.114f*vsu + 0.292f*vsw, 0, 0},
-            {0.299f*v - 0.3f*vsu + 1.25f*vsw, 0.587f*v - 0.588f*vsu - 1.05f*vsw, 0.114f*v + 0.886f*vsu - 0.203f*vsw, 0, 0},
-            {0, 0, 0, 1, 0},
-            {0, 0, 0, 0, 1}
-    }};
+    return { {
+        {red * norm, 0, 0, 0, 0},
+        {0, green * norm, 0, 0, 0},
+        {0, 0, blue * norm, 0, 0},
+        {0, 0, 0, 1, 0},
+        {0, 0, 0, 0, 1}
+    } };
 }
 
 
@@ -100,12 +95,12 @@ Amblyo InitializeAmblyo(HINSTANCE hInstance) {
     result.mainWindowRect.left = 0;
     result.mainWindowRect.right = GetSystemMetrics(SM_CXSCREEN);
 
-    result.leftHueAngle = 0.0f;
-    result.leftSaturation = 1.0f;
-    result.leftValue = 1.0f;
-    result.rightHueAngle = 0.0f;
-    result.rightSaturation = 1.0f;
-    result.rightValue = 1.0f;
+    result.leftRed = 1.0f;
+    result.leftGreen = 1.0f;
+    result.leftBlue = 1.0f;
+    result.rightRed = 1.0f;
+    result.rightGreen = 1.0f;
+    result.rightBlue = 1.0f;
 
     result.mainWindowHandle = CreateWindowEx(WS_EX_TOPMOST | WS_EX_LAYERED, 
         WindowClassName, WindowTitle, 
@@ -172,11 +167,11 @@ LRESULT CALLBACK HostWndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lPar
             DialogBox(GetModuleHandle(NULL), MAKEINTRESOURCE(IDD_DIALOG1), hWnd, ColorAdjustmentDialogProc);
         }
         else if(wParam == 'L') {
-            MAGCOLOREFFECT effect = HSVTransform(0.0f, 1.0f, 1.0f);
+            MAGCOLOREFFECT effect = ColorTransform(0.0f, 1.0f, 1.0f);
             MagSetColorEffect(amblyo.magWindowLeftHandle, &effect);        
         }
         else if(wParam == 'R') {
-            MAGCOLOREFFECT effect = HSVTransform(0.0f, 1.0f, 1.0f);
+            MAGCOLOREFFECT effect = ColorTransform(0.0f, 1.0f, 1.0f);
             MagSetColorEffect(amblyo.magWindowRightHandle, &effect);        
         }
         break;
@@ -215,29 +210,29 @@ INT_PTR CALLBACK ColorAdjustmentDialogProc(HWND hwnd, UINT Message, WPARAM wPara
     {
     case WM_INITDIALOG:
         {
-            HWND slider = GetDlgItem(hwnd, IDC_HUESLIDER_LEFT);
-            SendMessage(slider , TBM_SETRANGE, FALSE, MAKELONG(0, 360));
-            SendMessage(slider, TBM_SETPOS, TRUE, (LONG)amblyo.leftHueAngle);
+            HWND slider = GetDlgItem(hwnd, IDC_REDSLIDER_LEFT);
+            SendMessage(slider , TBM_SETRANGE, FALSE, MAKELONG(0, 100));
+            SendMessage(slider, TBM_SETPOS, TRUE, (LONG)(amblyo.leftRed*100.0));
 
-            slider = GetDlgItem(hwnd, IDC_SATSLIDER_LEFT);
-            SendMessage(slider, TBM_SETRANGE, FALSE, MAKELONG(100, 1000));
-            SendMessage(slider, TBM_SETPOS, TRUE, (LONG)(amblyo.leftSaturation*100.0));
+            slider = GetDlgItem(hwnd, IDC_GREENSLIDER_LEFT);
+            SendMessage(slider, TBM_SETRANGE, FALSE, MAKELONG(0, 100));
+            SendMessage(slider, TBM_SETPOS, TRUE, (LONG)(amblyo.leftGreen*100.0));
 
-            slider = GetDlgItem(hwnd, IDC_VALSLIDER_LEFT);
-            SendMessage(slider, TBM_SETRANGE, FALSE, MAKELONG(100, 1000));
-            SendMessage(slider, TBM_SETPOS, TRUE, (LONG)(amblyo.leftValue*100.0));
+            slider = GetDlgItem(hwnd, IDC_BLUESLIDER_LEFT);
+            SendMessage(slider, TBM_SETRANGE, FALSE, MAKELONG(0, 100));
+            SendMessage(slider, TBM_SETPOS, TRUE, (LONG)(amblyo.leftBlue*100.0));
 
-            slider = GetDlgItem(hwnd, IDC_HUESLIDER_RIGHT);
-            SendMessage(slider, TBM_SETRANGE, FALSE, MAKELONG(0, 360));
-            SendMessage(slider, TBM_SETPOS, TRUE, (LONG)amblyo.rightHueAngle);
+            slider = GetDlgItem(hwnd, IDC_REDSLIDER_RIGHT);
+            SendMessage(slider, TBM_SETRANGE, FALSE, MAKELONG(0, 100));
+            SendMessage(slider, TBM_SETPOS, TRUE, (LONG)(amblyo.rightRed*100.0));
 
-            slider = GetDlgItem(hwnd, IDC_SATSLIDER_RIGHT);
-            SendMessage(slider, TBM_SETRANGE, FALSE, MAKELONG(100, 1000));
-            SendMessage(slider, TBM_SETPOS, TRUE, (LONG)(amblyo.rightSaturation*100.0));
+            slider = GetDlgItem(hwnd, IDC_GREENSLIDER_RIGHT);
+            SendMessage(slider, TBM_SETRANGE, FALSE, MAKELONG(0, 100));
+            SendMessage(slider, TBM_SETPOS, TRUE, (LONG)(amblyo.rightGreen*100.0));
 
-            slider = GetDlgItem(hwnd, IDC_VALSLIDER_RIGHT);
-            SendMessage(slider, TBM_SETRANGE, FALSE, MAKELONG(100, 1000));
-            SendMessage(slider, TBM_SETPOS, TRUE, (LONG)(amblyo.rightValue*100.0));
+            slider = GetDlgItem(hwnd, IDC_BLUESLIDER_RIGHT);
+            SendMessage(slider, TBM_SETRANGE, FALSE, MAKELONG(0, 100));
+            SendMessage(slider, TBM_SETPOS, TRUE, (LONG)(amblyo.rightBlue*100.0));
         }
         return TRUE;
     case WM_COMMAND:
@@ -254,23 +249,23 @@ INT_PTR CALLBACK ColorAdjustmentDialogProc(HWND hwnd, UINT Message, WPARAM wPara
             int id = GetDlgCtrlID(slider);
             int pos = SendMessage(slider, TBM_GETPOS, 0, 0);
             switch (id) {
-            case IDC_HUESLIDER_LEFT:
-                amblyo.leftHueAngle = (float)pos;
+            case IDC_REDSLIDER_LEFT:
+                amblyo.leftRed = ((float)pos)*0.01f;
                 break;
-            case IDC_SATSLIDER_LEFT:
-                amblyo.leftSaturation = ((float)pos)/100.0f;
+            case IDC_GREENSLIDER_LEFT:
+                amblyo.leftGreen = ((float)pos)*0.01f;
                 break;
-            case IDC_VALSLIDER_LEFT:
-                amblyo.leftValue = ((float)pos)/100.0f;
+            case IDC_BLUESLIDER_LEFT:
+                amblyo.leftBlue = ((float)pos)*0.01f;
                 break;
-            case IDC_HUESLIDER_RIGHT:
-                amblyo.rightHueAngle = (float)pos;
+            case IDC_REDSLIDER_RIGHT:
+                amblyo.rightRed = ((float)pos)*0.01f;
                 break;
-            case IDC_SATSLIDER_RIGHT:
-                amblyo.rightSaturation = ((float)pos) / 100.0f;
+            case IDC_GREENSLIDER_RIGHT:
+                amblyo.rightGreen = ((float)pos)*0.01f;
                 break;
-            case IDC_VALSLIDER_RIGHT:
-                amblyo.rightValue = ((float)pos) / 100.0f;
+            case IDC_BLUESLIDER_RIGHT:
+                amblyo.rightBlue = ((float)pos)*0.01f;
                 break;
             };
         }
@@ -323,10 +318,10 @@ void CALLBACK UpdateMagWindow(HWND /*hwnd*/, UINT /*uMsg*/, UINT_PTR /*idEvent*/
     SetWindowPos(amblyo.mainWindowHandle, HWND_TOPMOST, 0, 0, 0, 0, 
         SWP_NOACTIVATE | SWP_NOMOVE | SWP_NOSIZE );
 
-    MAGCOLOREFFECT effect = HSVTransform(amblyo.leftHueAngle, amblyo.leftSaturation, amblyo.leftValue);
+    MAGCOLOREFFECT effect = ColorTransform(amblyo.leftRed, amblyo.leftGreen, amblyo.leftBlue);
     MagSetColorEffect(amblyo.magWindowLeftHandle, &effect);
 
-    effect = HSVTransform(amblyo.rightHueAngle, amblyo.rightSaturation, amblyo.rightValue);
+    effect = ColorTransform(amblyo.rightRed, amblyo.rightGreen, amblyo.rightBlue);
     MagSetColorEffect(amblyo.magWindowRightHandle, &effect);
 
     // Force redraw.
