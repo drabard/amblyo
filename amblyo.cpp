@@ -6,7 +6,6 @@
 #include <Commctrl.h>
 
 
-
 #define RESTOREDWINDOWSTYLES WS_SIZEBOX | WS_SYSMENU | WS_CLIPCHILDREN | WS_CAPTION | WS_MAXIMIZEBOX
 
 
@@ -166,14 +165,6 @@ LRESULT CALLBACK HostWndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lPar
         else if (wParam == 'C') {
             DialogBox(GetModuleHandle(NULL), MAKEINTRESOURCE(IDD_DIALOG1), hWnd, ColorAdjustmentDialogProc);
         }
-        else if(wParam == 'L') {
-            MAGCOLOREFFECT effect = ColorTransform(0.0f, 1.0f, 1.0f);
-            MagSetColorEffect(amblyo.magWindowLeftHandle, &effect);        
-        }
-        else if(wParam == 'R') {
-            MAGCOLOREFFECT effect = ColorTransform(0.0f, 1.0f, 1.0f);
-            MagSetColorEffect(amblyo.magWindowRightHandle, &effect);        
-        }
         break;
 
     case WM_SYSCOMMAND:
@@ -275,7 +266,6 @@ INT_PTR CALLBACK ColorAdjustmentDialogProc(HWND hwnd, UINT Message, WPARAM wPara
     }
     return TRUE;
 }
-
 
 
 void CALLBACK UpdateMagWindow(HWND /*hwnd*/, UINT /*uMsg*/, UINT_PTR /*idEvent*/, DWORD /*dwTime*/)
